@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,viewport-fit=cover">
+<title>NHÀ 3D • Sơn Hải</title>
+<style>
+:root{color-scheme:dark;--glass:rgba(11,20,31,.78);--line:rgba(255,255,255,.15);--gold:#eacb8c}
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#111923;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#fff}
+#view{position:fixed;inset:0}#view canvas{display:block;touch-action:none}
+.top{position:fixed;top:env(safe-area-inset-top);left:0;right:0;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px;pointer-events:none;z-index:2}
+.top>*{pointer-events:auto}.brand{padding:11px 14px;border-radius:16px;background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(18px)}
+.brand b{display:block;letter-spacing:2px;font-size:13px}.brand small{font-size:10px;color:#cbd5e1}
+button{font:inherit;color:inherit;border:1px solid var(--line);background:var(--glass);border-radius:12px;padding:11px 13px;cursor:pointer;backdrop-filter:blur(16px)}
+button.active{background:#b68b4e;color:#16191d}button:active{transform:scale(.98)}
+.actions{display:flex;gap:6px}.actions button{font-size:12px}
+.bottom{position:fixed;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:3;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.bottom>*{pointer-events:auto}
+.rooms{display:flex;gap:6px;overflow:auto;scrollbar-width:none}.rooms button{white-space:nowrap;flex:1;font-size:12px}
+.panel{border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(22px);border-radius:18px;padding:12px;max-height:39vh;overflow:auto;box-shadow:0 12px 35px #0005}
+.panelhead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.panelhead b{font-size:14px}.status{font-size:11px;color:#cbd5e1}
+.devices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.dev{display:flex;justify-content:space-between;align-items:center;text-align:left;gap:5px;min-height:46px;font-size:12px;padding:9px}.dev.on{border-color:#e4b86e;background:rgba(187,133,52,.26)}.dev span{font-size:10px;color:#d6d9de}
+.hint{position:fixed;left:50%;top:92px;transform:translateX(-50%);background:#101c2acc;padding:8px 12px;border-radius:18px;white-space:nowrap;font-size:11px;color:#d7e1ed;pointer-events:none;z-index:2}
+.modalwrap{position:fixed;inset:0;z-index:10;background:#0009;display:none;align-items:center;justify-content:center;padding:20px}.modal{width:min(100%,440px);border-radius:18px;background:#1b2632;border:1px solid #ffffff2e;padding:18px}.modal input{display:block;width:100%;margin:8px 0 13px;background:#101821;border:1px solid #ffffff35;border-radius:9px;color:#fff;padding:12px;font:inherit}.modal p{color:#c5ced9;font-size:12px;line-height:1.6}.modal .row{display:flex;gap:8px;justify-content:flex-end}.hidden{display:none!important}
+#loading{position:fixed;inset:0;background:#111923;display:grid;place-items:center;z-index:20;text-align:center;padding:20px}
+@media(min-width:800px){.bottom{left:20px;right:auto;width:410px}.panel{max-height:44vh}.rooms button{flex:1}}
+</style></head><body>
+<div id="view"></div><div id="loading"><div><h2>ĐANG DỰNG NHÀ 3D</h2><p>Đang tải mô hình và vật liệu...</p></div></div>
+<div class="top"><div class="brand"><b>SON HAI · HOME</b><small>3D INTERACTIVE RESIDENCE</small></div><div class="actions"><button id="overview" class="active">⌂ Toàn nhà</button><button id="settings">⚙</button></div></div>
+<div class="hint">Vuốt xoay · Chụm phóng to · Chọn phòng để bước vào</div>
+<div class="bottom"><div class="rooms"><button data-room="living" class="active">🛋 Phòng khách</button><button data-room="bed">🛏 Phòng ngủ</button><button data-room="kitchen">🍳 Phòng bếp</button><button data-room="other">🚪 Khác</button></div><div class="panel"><div class="panelhead"><b id="roomname">PHÒNG KHÁCH</b><span class="status" id="status">● DEMO · Không điều khiển thiết bị thật</span></div><div class="devices" id="devices"></div></div></div>
+<div class="modalwrap" id="modalwrap"><div class="modal"><h3>Kết nối Home Assistant</h3><p>Mặc định là chế độ Demo. Nếu muốn điều khiển thiết bị thật, hãy nhập địa chỉ HTTPS Home Assistant và Long-Lived Access Token. Token chỉ lưu trong trình duyệt này, không đưa lên GitHub. Chỉ dùng khi mày tin tưởng thiết bị và trang đang mở.</p><label>Địa chỉ HA</label><input id="haurl" placeholder="https://ten-mien-cua-ban"><label>Access token</label><input id="hatoken" type="password" placeholder="Dán token tại đây"><div class="row"><button id="disconnect">Chế độ Demo</button><button id="connect">Kết nối</button><button id="close">Đóng</button></div><p id="msg"></p></div></div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.1/examples/jsm/"}}</script>
+<script>
+window.addEventListener('error', function(e){const el=document.getElementById('loading');if(el){el.innerHTML='<div style="padding:24px"><h2>KHÔNG TẢI ĐƯỢC 3D</h2><p>'+String(e.message||'Lỗi JavaScript')+'</p><p>Hãy mở bằng Safari và kiểm tra kết nối Internet.</p></div>'}});
+window.addEventListener('unhandledrejection', function(e){const el=document.getElementById('loading');if(el){el.innerHTML='<div style="padding:24px"><h2>LỖI KHỞI TẠO 3D</h2><p>'+String(e.reason?.message||e.reason||'Không rõ nguyên nhân')+'</p></div>'}});
+setTimeout(()=>{const el=document.getElementById('loading');if(el){el.innerHTML='<div style="padding:24px"><h2>3D CHƯA KHỞI ĐỘNG</h2><p>Không tải được thư viện hoặc trình duyệt chặn WebGL. Hãy thử Safari.</p></div>'}},18000);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+const $=id=>document.getElementById(id);
+const scene=new THREE.Scene();scene.background=new THREE.Color('#b9c7ce');scene.fog=new THREE.Fog('#b9c7ce',27,65);
+const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.65));renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.42;$('view').appendChild(renderer.domElement);
+const camera=new THREE.PerspectiveCamera(43,innerWidth/innerHeight,.08,130);camera.position.set(11,13,15);
+const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.dampingFactor=.065;controls.maxPolarAngle=Math.PI*.49;controls.minDistance=2.2;controls.maxDistance=34;controls.target.set(0,0,0);
+scene.add(new THREE.HemisphereLight(0xe9f4ff,0x71685a,2.1));
+const sun=new THREE.DirectionalLight(0xffe9c6,3.4);sun.position.set(-6,15,8);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-15;sun.shadow.camera.right=15;sun.shadow.camera.top=15;sun.shadow.camera.bottom=-15;sun.shadow.bias=-.0004;scene.add(sun);
+const fill=new THREE.DirectionalLight(0xc4dfff,1.3);fill.position.set(9,7,-6);scene.add(fill);
+const mat=(color,roughness=.7,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
+const white=mat('#eee9df'),wall=mat('#f0ece4'),wood=mat('#a67b50'),darkWood=mat('#604638'),black=mat('#20262a',.42),chrome=mat('#a5afb5',.25,.8),linen=mat('#d2c5ae',.95),gray=mat('#9da4a7'),stone=mat('#d3d0c9',.34),glass=new THREE.MeshPhysicalMaterial({color:0xb6d5e0,metalness:0,roughness:.12,transparent:true,opacity:.37,side:THREE.DoubleSide,depthWrite:false});
+function mesh(geo,material,x,y,z,cast=true){const o=new THREE.Mesh(geo,material);o.position.set(x,y,z);o.castShadow=cast;o.receiveShadow=true;scene.add(o);return o}
+function box(w,h,d,m,x,y,z){return mesh(new THREE.BoxGeometry(w,h,d),m,x,y,z)}
+function cyl(r,h,m,x,y,z,n=32){return mesh(new THREE.CylinderGeometry(r,r,h,n),m,x,y,z)}
+function ball(r,m,x,y,z){return mesh(new THREE.SphereGeometry(r,20,12),m,x,y,z)}
+function plane(w,d,m,x,y,z){const o=mesh(new THREE.PlaneGeometry(w,d),m,x,y,z,false);o.rotation.x=-Math.PI/2;return o}
+function line(x1,z1,x2,z2,height=2.65,th=.16,m=wall){let dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz);const o=box(len,height,th,m,(x1+x2)/2,height/2,(z1+z2)/2);o.rotation.y=-Math.atan2(dz,dx);return o}
+function light(x,y,z,color=0xffd49a,power=16,dist=5){const l=new THREE.PointLight(color,power,dist,2);l.position.set(x,y,z);scene.add(l);return l}
+function canvasTexture(draw){let c=document.createElement('canvas');c.width=c.height=512;let ctx=c.getContext('2d');draw(ctx,512);let t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;return t}
+const oakTex=canvasTexture((c,n)=>{c.fillStyle='#b88c60';c.fillRect(0,0,n,n);for(let i=0;i<180;i++){c.strokeStyle=i%3?'#956c4b55':'#dfb78a55';c.lineWidth=Math.random()*3+.3;c.beginPath();let x=Math.random()*n;c.moveTo(x,0);c.bezierCurveTo(x+Math.random()*20,n*.3,x-Math.random()*20,n*.7,x+Math.random()*15,n);c.stroke()}});
+const oak=new THREE.MeshStandardMaterial({map:oakTex,roughness:.72});
+const marbleTex=canvasTexture((c,n)=>{c.fillStyle='#e5e2dc';c.fillRect(0,0,n,n);for(let i=0;i<65;i++){c.strokeStyle=i%3?'#8f928d24':'#a79b8b40';c.lineWidth=Math.random()*2+.5;c.beginPath();let x=Math.random()*n;c.moveTo(x,-10);c.bezierCurveTo(x+60,140,x-60,350,x+100,n+10);c.stroke()}});
+const marble=new THREE.MeshStandardMaterial({map:marbleTex,roughness:.31});
+const grass=mat('#7b8b6e');plane(45,45,grass,0,-.16,0);box(12,.25,9,mat('#b8b3a8'),0,-.13,0);
+const woodFloor=new THREE.MeshStandardMaterial({map:oakTex,roughness:.77});woodFloor.map.repeat.set(3,2);
+const tileFloor=new THREE.MeshStandardMaterial({map:marbleTex,roughness:.48});tileFloor.map.repeat.set(2,2);
+plane(6.0,8.5,tileFloor,-3,.015,0);plane(5.8,4.15,woodFloor,3.05,.017,-2.18);plane(5.8,4.1,tileFloor,3.05,.02,2.22);
+line(-6,-4.4,6,-4.4);line(-6,-4.4,-6,4.4);line(6,-4.4,6,4.4);line(-6,4.4,6,4.4);line(0,-4.4,0,4.4,2.65,.18);line(0,0,6,0,2.65,.18);
+// trim, wall art and windows
+for(const x of [-5.9,-.1,5.9]){box(.035,.09,8.4,white,x,.1,0)}
+for(const z of [-4.3,4.3]){box(11.8,.1,.035,white,0,.12,z)}
+function windowPanel(x,z,w=2.1){box(w,1.35,.08,chrome,x,1.55,z);box(w-.11,1.22,.035,glass,x,1.55,z);box(.045,1.33,.07,chrome,x,1.55,z);box(w+.2,.08,.22,white,x,.83,z)}
+windowPanel(-3,-4.4,2.8);windowPanel(3,-4.4,2.25);windowPanel(3,4.4,2.1);
+function rug(x,z,w,d,color){const r=box(w,.025,d,mat(color,.96),x,.055,z);return r}
+function leg(x,y,z,h=.42){cyl(.035,h,chrome,x,y,z,10)}
+function framedArt(x,y,z,w,h,col){box(w,h,.065,black,x,y,z);box(w-.11,h-.11,.07,mat(col),x,y,z+.06);box(w*.4,h*.22,.075,mat('#c6a77b'),x-w*.12,y+h*.08,z+.1)}
+// living
+rug(-3,-.4,3.9,2.6,'#e4d6c5');
+box(3.35,.46,.98,linen,-3,.47,-2.1);box(3.35,.72,.25,linen,-3,.83,-2.57);
+for(const x of [-4.35,-3.6,-2.75,-1.9]){box(.7,.16,.68,mat('#b9aa95'),x,.79,-2.02);box(.63,.3,.12,mat('#bca78c'),x,.95,-2.39)}
+box(.25,.58,1.0,linen,-4.8,.59,-2.1);box(.25,.58,1.0,linen,-1.2,.59,-2.1);
+box(2.1,.11,1.1,oak,-3,.46,-.45);for(const x of [-3.85,-2.15])for(const z of [-.84,-.06])leg(x,.24,z,.37);
+box(2.9,.46,.55,darkWood,-3, .28,3.63);box(2.45,1.42,.1,black,-3,1.68,4.24);box(2.25,1.23,.012,mat('#1c303d',.15),-3,1.68,4.31);box(1.9,.05,.06,chrome,-3,.91,4.32);
+for(let i=0;i<14;i++)box(.06,2.55,.06,i%2?wood:darkWood,-5.7+i*.12,1.3,2.0);
+const plantPot=cyl(.24,.4,mat('#d9d2c5'),-5.15,.2,3.3);for(let i=0;i<11;i++){const a=i*2.4;const leaf=ball(.18,mat(i%2?'#426a45':'#638b54'),-5.15+Math.cos(a)*.24,.64+Math.random()*.45,3.3+Math.sin(a)*.24);leaf.scale.set(.55,1.7,.6)}
+framedArt(-4.8,1.65,-4.27,1.3,.95,'#9d978b');
+const livingLight=light(-3,2.35,-.5);cyl(.47,.12,mat('#d7c4a6'),-3,2.5,-.4);cyl(.09,.4,chrome,-3,2.28,-.4);
+// bedroom
+rug(3,-2.2,4.1,2.9,'#d4c9b7');
+box(2.65,.35,3.0,darkWood,2.75,.4,-2.05);box(2.55,.3,2.85,linen,2.75,.72,-2.05);box(2.75,1.2,.22,mat('#b6a99b'),2.75,1.12,-3.53);
+box(2.48,.12,1.45,mat('#e6e0d5'),2.75,.93,-1.35);
+for(const x of [2.08,3.42]){box(.94,.18,.5,white,x,.96,-2.99);box(.55,.4,.48,darkWood,x===2.08?1.05:4.48,.44,-3.25)}
+box(.92,2.22,.7,wood,5.38,1.13,-2.5);for(let i=0;i<3;i++)box(.015,2.1,.03,chrome,5.04+i*.34,1.13,-2.13);
+box(1.6,.38,.45,wood,1.05,.45,-3.68);framedArt(4.8,1.55,-4.25,1.35,.95,'#7e9c9a');
+const bedLight=light(3,2.35,-1.7,0xffd7a8,12);cyl(.37,.15,mat('#e2cda9'),3,2.48,-1.9);
+// kitchen
+for(let i=0;i<5;i++){box(.91,.82,.68,i%2?white:mat('#d9d2c7'),.66+i*1.05,.43,3.73);box(.035,.18,.03,chrome,.9+i*1.05,.55,3.35)}
+box(5.45,.10,.88,marble,3.1,.91,3.72);
+for(let i=0;i<3;i++){box(.73,.84,.68,white,5.49,.42,3.15-i*.84);box(.08,.13,.025,chrome,5.06,.54,3.15-i*.84)}
+box(.9,.09,3.1,marble,5.5,.9,2.47);
+box(1.16,.07,.75,black,2.1,.98,3.72);for(const x of [1.8,2.4])for(const z of [3.52,3.92])cyl(.15,.025,chrome,x,1.04,z);
+box(1.4,.2,.65,chrome,2.2,2.34,3.86);box(.9,.35,.5,chrome,2.2,2.09,3.84);
+box(.75,1.9,.77,chrome,.55,.96,2.28);box(.76,.04,.78,black,.55,1.8,2.28);
+box(2.35,.12,1.1,oak,2.55,.78,1.14);for(const x of [1.63,3.47])for(const z of [.7,1.57])leg(x,.4,z,.68);
+for(const x of [1.6,3.5]){box(.6,.13,.5,linen,x,.51,.33);box(.6,.62,.12,wood,x,.75,.08)}
+for(const z of [.45,1.85]){box(.55,.12,.5,linen,4.1,.52,z);box(.13,.62,.5,wood,4.37,.76,z)}
+const kitchenLight=light(3,2.3,2.0,0xffd7ac,13);for(const x of [2.1,3.3]){cyl(.24,.25,mat('#bda17e'),x,2.25,1.12);cyl(.025,.28,chrome,x,2.54,1.12)}
+// small details
+for(let i=0;i<5;i++){const x=.9+i*.95;box(.07,.9,.07,mat('#c4aa7e'),x,1.55,4.21)}
+box(.72,.035,.45,chrome,4.3,.98,3.73);box(.55,.01,.32,black,4.3,1.0,3.73);
+const fanParts=[];function fan(x,z){const hub=cyl(.15,.12,chrome,x,2.31,z);for(let i=0;i<4;i++){let b=box(1.3,.045,.22,wood,x,2.32,z);b.rotation.y=i*Math.PI/2;fanParts.push(b)}}fan(-3,-1.0);fan(3,-1.2);
+// camera movement
+const views={all:{pos:[11,13,15],target:[0,0,0]},living:{pos:[-3.7,2.35,1.9],target:[-3,1.0,-1.0]},bed:{pos:[4.4,2.4,-.05],target:[2.7,1,-2.5]},kitchen:{pos:[1.0,2.3,.4],target:[3,1,2.9]},other:{pos:[10,10,13],target:[0,0,0]}};
+let destination=views.all,transition=false;function go(which){destination=views[which]||views.all;transition=true;$('overview').classList.toggle('active',which==='all');document.querySelectorAll('.rooms button').forEach(b=>b.classList.toggle('active',b.dataset.room===which));if(which!=='all')setRoom(which)}
+$('overview').onclick=()=>go('all');document.querySelectorAll('.rooms button').forEach(b=>b.onclick=()=>go(b.dataset.room));
+const names={living:'PHÒNG KHÁCH',bed:'PHÒNG NGỦ',kitchen:'PHÒNG BẾP',other:'CỬA CUỐN & CAMERA'};
+const devices={
+living:[['Đèn trần','light.phong_khach_3','light'],['Đèn mắt trâu','light.phong_khach_2','light'],['Đèn LED','light.phong_khach','light'],['LED TV WLED','light.wled','light'],['Quạt trần','fan.quat_tran','fan'],['Âm ly','switch.am_ly','switch']],
+bed:[['Đèn phòng ngủ','light.phong_khach_4','light'],['Quạt Hatari','fan.quat_phong_ngu','fan'],['Điều hòa Panasonic','climate.dieu_hoa_panasonic','climate'],['Máy lọc không khí','fan.zhimi_rmb1_7392_air_purifier','fan']],
+kitchen:[['Đèn bếp chính','light.nha_bep_4','light'],['Đèn bếp phụ','light.nha_bep','light'],['Đèn hút mùi','light.nha_bep_quat_hut_mui','light']],
+other:[['Cửa cuốn','cover.cua_cuon_2','cover'],['Camera Hikvision','camera.hikvision_ds_2de2c400mwg_e_mainstream','camera'],['Camera Dahua','camera.dahua_profile001','camera'],['Camera phòng khách','camera.camera_phong_khach','camera']]
+};
+let selected='living',states={},demo={},ws=null,auth=false,msgid=1,haUrl='',token='';
+function isOn(id){let s=auth?states[id]?.state:demo[id];return s==='on'||s==='open'||s==='cool'||s==='heat'||s==='auto'}
+function render(){const d=devices[selected];$('roomname').textContent=names[selected];$('devices').innerHTML='';for(const [name,id,domain] of d){let b=document.createElement('button');b.className='dev'+(isOn(id)?' on':'');b.innerHTML='<span style="font-size:12px;color:#fff">'+name+'</span><span>'+(domain==='camera'?'Xem':isOn(id)?'● BẬT':'○ TẮT')+'</span>';b.onclick=()=>toggle(id,domain);$('devices').appendChild(b)}livingLight.intensity=devices.living.slice(0,4).some(d=>isOn(d[1]))?18:6;bedLight.intensity=isOn('light.phong_khach_4')?16:5;kitchenLight.intensity=devices.kitchen.some(d=>isOn(d[1]))?18:6}
+function setRoom(r){selected=r;render()}
+function toggle(id,domain){if(domain==='camera'){alert('Camera: '+id+'\\nBản này chưa tích hợp truyền video trực tiếp.');return}
+if(!auth){demo[id]=isOn(id)?'off':(domain==='cover'?'open':domain==='climate'?'cool':'on');render();return}
+if(!ws||ws.readyState!==1){alert('Chưa kết nối Home Assistant');return}
+let service=isOn(id)?'turn_off':'turn_on';let data={entity_id:id};if(domain==='cover')service=isOn(id)?'close_cover':'open_cover';if(domain==='climate'){service='set_hvac_mode';data={entity_id:id,hvac_mode:isOn(id)?'off':'cool'}}
+ws.send(JSON.stringify({id:++msgid,type:'call_service',domain,service,service_data:data}))}
+function setStatus(s){$('status').textContent=s}
+function disconnect(){if(ws){ws.onclose=null;ws.close();ws=null}auth=false;states={};setStatus('● DEMO · Không điều khiển thiết bị thật');render()}
+function connect(){const u=$('haurl').value.trim().replace(/\/$/,'');const t=$('hatoken').value.trim();if(!/^https:\/\//.test(u)||!t){$('msg').textContent='Cần địa chỉ HTTPS và token.';return}disconnect();haUrl=u;token=t;setStatus('◌ Đang kết nối');$('msg').textContent='Đang kết nối...';const url=u.replace(/^https:/,'wss:')+'/api/websocket';try{ws=new WebSocket(url);ws.onmessage=e=>{const data=JSON.parse(e.data);if(data.type==='auth_required')ws.send(JSON.stringify({type:'auth',access_token:token}));if(data.type==='auth_ok'){auth=true;setStatus('● HOME ASSISTANT · Đã kết nối');$('msg').textContent='Đã kết nối';ws.send(JSON.stringify({id:++msgid,type:'get_states'}));ws.send(JSON.stringify({id:++msgid,type:'subscribe_events',event_type:'state_changed'}));$('modalwrap').style.display='none'}if(data.type==='auth_invalid'){$('msg').textContent='Token không hợp lệ';disconnect()}if(data.type==='result'&&Array.isArray(data.result)){for(const s of data.result)states[s.entity_id]=s;render()}if(data.type==='event'&&data.event?.data?.new_state){const s=data.event.data.new_state;states[s.entity_id]=s;render()}};ws.onerror=()=>{$('msg').textContent='Không kết nối được. Kiểm tra HTTPS, token và mạng.'};ws.onclose=()=>{if(auth){auth=false;setStatus('● MẤT KẾT NỐI · Demo');render()}}}catch(e){$('msg').textContent=e.message}}
+$('settings').onclick=()=>$('modalwrap').style.display='flex';$('close').onclick=()=>$('modalwrap').style.display='none';$('disconnect').onclick=()=>{disconnect();$('modalwrap').style.display='none'};$('connect').onclick=connect;
+for(const group of Object.values(devices))for(const [name,id] of group)demo[id]='off';
+render();
+const clock=new THREE.Clock();let frame=0;function animate(){requestAnimationFrame(animate);const dt=clock.getDelta();if(transition){let a=Math.min(1,dt*3);camera.position.lerp(new THREE.Vector3(...destination.pos),a);controls.target.lerp(new THREE.Vector3(...destination.target),a);if(camera.position.distanceTo(new THREE.Vector3(...destination.pos))<.03)transition=false}
+controls.update();if(++frame%3===0&&isOn('fan.quat_tran'))for(const f of fanParts.slice(0,4))f.rotation.y+=.09;renderer.render(scene,camera)}
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+$('loading').remove();animate();
+</script></body></html>
